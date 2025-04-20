@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -37,8 +36,31 @@ export const AuthForm = () => {
             : "Enter your information to create an account"}
         </CardDescription>
       </CardHeader>
+
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <Button
+            type="button"
+            variant="outline" 
+            className="w-full bg-white hover:bg-gray-50" 
+            onClick={signInWithGoogle}
+            disabled={loading}
+          >
+            <FcGoogle className="w-5 h-5 mr-2" />
+            <span>Continue with Google</span>
+          </Button>
+          
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <Separator className="w-full" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                Or continue with email
+              </span>
+            </div>
+          </div>
+          
           {!isLogin && (
             <div className="space-y-2">
               <Label htmlFor="name" className="flex items-center gap-2">
@@ -99,30 +121,9 @@ export const AuthForm = () => {
               ? "Login"
               : "Create Account"}
           </Button>
-          
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center">
-              <Separator className="w-full" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">
-                Or continue with
-              </span>
-            </div>
-          </div>
-          
-          <Button 
-            type="button"
-            variant="outline" 
-            className="w-full" 
-            onClick={signInWithGoogle}
-            disabled={loading}
-          >
-            <FcGoogle className="mr-2 h-4 w-4" />
-            Google
-          </Button>
         </form>
       </CardContent>
+      
       <CardFooter>
         <p className="text-sm text-center text-muted-foreground w-full">
           {isLogin ? "Don't have an account? " : "Already have an account? "}
