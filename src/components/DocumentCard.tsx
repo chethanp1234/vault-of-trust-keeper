@@ -1,163 +1,185 @@
 
-import { useState } from "react";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { useDocuments, Document } from "../context/DocumentContext";
-import { Download, Share, FileCheck, File, X, MoreHorizontal, QrCode } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
-import { toast } from "sonner";
+import { useState } from 'react';
+import { FiDownload, FiCheck, FiShare2, FiTrash2 } from 'react-icons/fi';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Document, useDocuments } from '../context/DocumentContext';
+import { toast } from 'sonner';
+import { Separator } from '@/components/ui/separator';
+import { saveAs } from 'file-saver';
 
 interface DocumentCardProps {
   document: Document;
 }
 
 export const DocumentCard = ({ document }: DocumentCardProps) => {
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [shareData, setShareData] = useState<{ url: string; qrCode: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const { deleteDocument, shareDocument, toggleVerifyDocument } = useDocuments();
-  const [showShareDialog, setShowShareDialog] = useState(false);
-  const [shareInfo, setShareInfo] = useState<{ url: string; qrCode: string } | null>(null);
 
-  const handleShare = () => {
-    const info = shareDocument(document.id);
-    setShareInfo(info);
-    setShowShareDialog(true);
-  };
-
-  const handleCopyLink = () => {
-    if (shareInfo?.url) {
-      navigator.clipboard.writeText(shareInfo.url);
-      toast.success("Link copied to clipboard");
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(document.url);
+      const blob = await response.blob();
+      saveAs(blob, document.name);
+      toast.success(`Downloading ${document.name}`);
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Failed to download document');
     }
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-  
-  const getIconByFileType = () => {
-    if (document.verified) {
-      return <FileCheck className="h-6 w-6 text-green-500" />;
+  const handleShare = async () => {
+    setIsLoading(true);
+    try {
+      const data = await shareDocument(document.id);
+      setShareData(data);
+      setIsShareOpen(true);
+    } catch (error) {
+      console.error('Share error:', error);
+      toast.error('Failed to share document');
+    } finally {
+      setIsLoading(false);
     }
-    return <File className="h-6 w-6 text-digilocker-500" />;
+  };
+
+  const handleVerify = () => {
+    toggleVerifyDocument(document.id);
+  };
+
+  const handleDelete = () => {
+    deleteDocument(document.id);
+  };
+
+  const getFileIcon = () => {
+    if (document.type.startsWith('image/')) {
+      return (
+        <img 
+          src={document.preview} 
+          alt={document.name}
+          className="w-full h-32 object-cover rounded-t-lg"
+        />
+      );
+    }
+    
+    return (
+      <div className="flex items-center justify-center h-32 bg-gray-100 rounded-t-lg">
+        <DocumentIcon type={document.type} />
+      </div>
+    );
   };
 
   return (
     <>
-      <Card className="overflow-hidden hover:shadow-md transition-shadow">
-        <div className="aspect-square bg-gray-100 relative">
-          {document.preview ? (
-            <img 
-              src={document.preview} 
-              alt={document.name} 
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              {getIconByFileType()}
-            </div>
-          )}
-          {document.verified && (
-            <div className="absolute top-2 right-2 bg-green-100 text-green-800 rounded-full p-1">
-              <FileCheck className="h-4 w-4" />
-            </div>
-          )}
-        </div>
-        
+      <Card className="overflow-hidden transition-all hover:shadow-md">
+        {getFileIcon()}
         <CardContent className="p-4">
-          <div className="space-y-1">
-            <div className="font-medium truncate" title={document.name}>
-              {document.name}
+          <div className="flex items-start justify-between">
+            <div className="truncate">
+              <h3 className="font-medium truncate text-sm">{document.name}</h3>
+              <p className="text-muted-foreground text-xs">
+                {formatFileSize(document.size)}
+              </p>
             </div>
-            <div className="text-sm text-muted-foreground flex items-center justify-between">
-              <span>{formatFileSize(document.size)}</span>
-              <span>{formatDistanceToNow(new Date(document.updatedAt), { addSuffix: true })}</span>
-            </div>
+            {document.verified && (
+              <div className="bg-green-100 p-1 rounded-full">
+                <FiCheck className="h-3 w-3 text-green-600" />
+              </div>
+            )}
           </div>
         </CardContent>
-        
-        <CardFooter className="p-4 pt-0 flex justify-between">
-          <Button variant="outline" size="sm" onClick={() => toast.info("Downloading document...")}>
-            <Download className="h-4 w-4 mr-1" />
-            Download
+        <Separator />
+        <CardFooter className="p-2 bg-gray-50 flex justify-between">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={handleDownload}
+          >
+            <FiDownload className="h-4 w-4" />
           </Button>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleShare}>
-                <Share className="h-4 w-4 mr-2" />
-                Share
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => toggleVerifyDocument(document.id)}>
-                <FileCheck className="h-4 w-4 mr-2" />
-                {document.verified ? "Remove Verification" : "Verify Document"}
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => deleteDocument(document.id)}
-                className="text-red-600 focus:text-red-600"
-              >
-                <X className="h-4 w-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={handleShare} 
+            disabled={isLoading}
+          >
+            <FiShare2 className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={handleVerify}
+          >
+            <FiCheck className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={handleDelete}
+          >
+            <FiTrash2 className="h-4 w-4" />
+          </Button>
         </CardFooter>
       </Card>
 
-      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={isShareOpen} onOpenChange={setIsShareOpen}>
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Share Document</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="flex flex-col items-center space-y-4">
-              {shareInfo?.qrCode && (
-                <div className="border p-2 rounded-md">
-                  <img src={shareInfo.qrCode} alt="QR Code" width={150} height={150} />
-                </div>
-              )}
-              <div className="flex items-center space-x-2 w-full">
-                <Input 
-                  readOnly 
-                  value={shareInfo?.url || ""} 
-                  className="flex-1"
+          {shareData && (
+            <div className="space-y-4">
+              <div className="flex flex-col items-center justify-center">
+                <img 
+                  src={shareData.qrCode} 
+                  alt="QR Code"
+                  className="w-48 h-48 border p-2 rounded-lg"
                 />
-                <Button onClick={handleCopyLink} size="sm">
-                  Copy
-                </Button>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Sharing Link</p>
+                <div className="flex">
+                  <input
+                    value={shareData.url}
+                    readOnly
+                    className="flex-1 p-2 border rounded-l-md text-sm"
+                  />
+                  <Button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareData.url);
+                      toast.success('Link copied to clipboard');
+                    }}
+                    className="rounded-l-none"
+                  >
+                    Copy
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setShowShareDialog(false)}>Close</Button>
-          </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
     </>
   );
 };
 
-// Add missing Input component
-const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => {
-  return <input {...props} className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${props.className || ''}`} />;
+const formatFileSize = (bytes: number) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+const DocumentIcon = ({ type }: { type: string }) => {
+  // Return different icons based on file type
+  if (type.includes('pdf')) {
+    return <div className="bg-red-100 p-4 rounded-lg">PDF</div>;
+  } else if (type.includes('word') || type.includes('doc')) {
+    return <div className="bg-blue-100 p-4 rounded-lg">DOC</div>;
+  } else {
+    return <div className="bg-gray-100 p-4 rounded-lg">FILE</div>;
+  }
 };
