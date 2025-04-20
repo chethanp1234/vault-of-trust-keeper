@@ -2,20 +2,24 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
+import { supabase } from '@/integrations/supabase/client';
+import { Session, User, Provider } from '@supabase/supabase-js';
 
-interface User {
+interface Profile {
   id: string;
   name: string;
   email: string;
-  avatar?: string;
+  avatar_url?: string;
 }
 
 interface AuthContextType {
-  user: User | null;
+  user: Profile | null;
+  session: Session | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -29,46 +33,77 @@ export const useAuth = () => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<Profile | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if user is logged in
-    const userData = localStorage.getItem('digilocker_user');
-    if (userData) {
-      setUser(JSON.parse(userData));
-    }
-    setLoading(false);
+    // Set up auth state change listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, currentSession) => {
+        setSession(currentSession);
+        
+        // Fetch the profile when session changes
+        if (currentSession?.user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', currentSession.user.id)
+            .single();
+
+          if (profile) {
+            setUser(profile);
+          }
+        } else {
+          setUser(null);
+        }
+        
+        setLoading(false);
+      }
+    );
+
+    // Check for existing session
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      setSession(currentSession);
+      
+      if (currentSession?.user) {
+        // Fetch the user profile
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', currentSession.user.id)
+          .single()
+          .then(({ data: profile, error }) => {
+            if (error) {
+              console.error('Error fetching profile:', error);
+            } else if (profile) {
+              setUser(profile);
+            }
+            setLoading(false);
+          });
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  // Simulating login functionality
   const login = async (email: string, password: string) => {
     try {
       setLoading(true);
-      // In a real app, we would make an API call here
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Mock user for demo purposes
-      if (email === 'demo@example.com' && password === 'password') {
-        const mockUser = {
-          id: '1',
-          name: 'Demo User',
-          email: 'demo@example.com',
-          avatar: 'https://i.pravatar.cc/150?img=1'
-        };
-        
-        localStorage.setItem('digilocker_user', JSON.stringify(mockUser));
-        setUser(mockUser);
-        toast.success("Logged in successfully");
-        navigate('/dashboard');
-      } else {
-        toast.error("Invalid email or password");
-      }
-    } catch (error) {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      
+      if (error) throw error;
+      
+      toast.success("Logged in successfully");
+      navigate('/dashboard');
+    } catch (error: any) {
       console.error('Login error:', error);
-      toast.error('Failed to login. Please try again.');
+      toast.error(error.message || 'Failed to login. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -77,43 +112,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signup = async (name: string, email: string, password: string) => {
     try {
       setLoading(true);
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Mock signup
-      const mockUser = {
-        id: Date.now().toString(),
-        name,
-        email,
-        avatar: `https://i.pravatar.cc/150?img=${Math.floor(Math.random() * 70)}`
-      };
+      const { error } = await supabase.auth.signUp({ 
+        email, 
+        password,
+        options: {
+          data: {
+            name
+          }
+        }
+      });
       
-      localStorage.setItem('digilocker_user', JSON.stringify(mockUser));
-      setUser(mockUser);
-      toast.success("Account created successfully");
-      navigate('/dashboard');
-    } catch (error) {
+      if (error) throw error;
+      
+      toast.success("Account created successfully. Please verify your email.");
+    } catch (error: any) {
       console.error('Signup error:', error);
-      toast.error('Failed to create account. Please try again.');
+      toast.error(error.message || 'Failed to create account. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('digilocker_user');
-    localStorage.removeItem('digilocker_documents');
-    setUser(null);
-    toast.info("Logged out successfully");
-    navigate('/');
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+      toast.info("Logged out successfully");
+      navigate('/');
+    } catch (error: any) {
+      console.error('Logout error:', error);
+      toast.error('Failed to log out. Please try again.');
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      
+      if (error) throw error;
+    } catch (error: any) {
+      console.error('Google sign-in error:', error);
+      toast.error(error.message || 'Failed to login with Google. Please try again.');
+    }
   };
 
   const value = {
     user,
+    session,
     loading,
     login,
     signup,
-    logout
+    logout,
+    signInWithGoogle
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

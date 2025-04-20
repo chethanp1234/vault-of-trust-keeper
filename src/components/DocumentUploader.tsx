@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Upload } from 'lucide-react';
 import { useDocuments } from '../context/DocumentContext';
 import { Progress } from '@/components/ui/progress';
+import { useAuth } from '../context/AuthContext';
+import { toast } from 'sonner';
 
 export const DocumentUploader = () => {
   const [isDragging, setIsDragging] = useState(false);
@@ -11,6 +13,7 @@ export const DocumentUploader = () => {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { uploadDocument } = useDocuments();
+  const { user } = useAuth();
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -39,6 +42,33 @@ export const DocumentUploader = () => {
   };
 
   const processFile = async (file: File) => {
+    // Check if user is logged in
+    if (!user) {
+      toast.error("You must be logged in to upload documents");
+      return;
+    }
+    
+    // Validate file size
+    if (file.size > 10 * 1024 * 1024) { // 10MB limit
+      toast.error("File size exceeds the 10MB limit");
+      return;
+    }
+    
+    // Validate file type
+    const allowedTypes = [
+      'application/pdf', 
+      'image/jpeg', 
+      'image/jpg', 
+      'image/png', 
+      'application/msword', 
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("File type not supported. Please upload PDF, JPG, PNG, or DOC files");
+      return;
+    }
+    
     setIsUploading(true);
     
     // Simulate upload progress
@@ -55,6 +85,10 @@ export const DocumentUploader = () => {
     try {
       await uploadDocument(file);
       setUploadProgress(100);
+      toast.success(`${file.name} uploaded successfully`);
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast.error("Failed to upload document");
     } finally {
       clearInterval(intervalId);
       // Reset after a short delay
